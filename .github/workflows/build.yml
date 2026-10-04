@@ -48,10 +48,25 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Android project found at: $PROJECT_DIR"
 
-      - name: Build Debug APK
-        run: |
+            - name: Build Debug APK
+               run: |
           cd "$PROJECT_DIR"
-          gradle assembleDebug --stacktrace
+
+          cat > fix-jvm.gradle <<'EOF'
+          afterEvaluate {
+              tasks.withType(JavaCompile).configureEach {
+                  options.release = 17
+              }
+
+              tasks.configureEach { task ->
+                  if (task.class.name == 'org.jetbrains.kotlin.gradle.tasks.KotlinCompile') {
+                      task.kotlinOptions.jvmTarget = '17'
+                  }
+              }
+          }
+          EOF
+
+          gradle -I fix-jvm.gradle assembleDebug --stacktrace
 
       - name: Find APK
         run: |
