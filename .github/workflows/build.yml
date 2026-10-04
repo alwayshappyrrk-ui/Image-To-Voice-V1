@@ -33,7 +33,7 @@ jobs:
 
       - name: Find Android project
         run: |
-          echo "Searching for settings.gradle.kts or settings.gradle..."
+          echo "Searching for Android Gradle project..."
           find extracted -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \)
 
       - name: Set Android project directory
@@ -58,21 +58,18 @@ jobs:
           echo "Gradle files:"
           ls -la
 
-          cat > fix-jvm.gradle <<'EOF'
-          afterEvaluate {
-              tasks.withType(JavaCompile).configureEach {
-                  options.release = 17
-              }
+          echo "Java version:"
+          java -version
 
-              tasks.configureEach { task ->
-                  if (task.class.name == 'org.jetbrains.kotlin.gradle.tasks.KotlinCompile') {
-                      task.kotlinOptions.jvmTarget = '17'
-                  }
-              }
-          }
-          EOF
+          echo "Gradle version:"
+          gradle --version
 
-          gradle -I fix-jvm.gradle assembleDebug --stacktrace
+          echo "Starting Gradle build..."
+
+          gradle assembleDebug \
+            -Dorg.gradle.java.home="$JAVA_HOME" \
+            -Dkotlin.jvm.target.validation.mode=warning \
+            --stacktrace
 
       - name: Find APK
         run: |
