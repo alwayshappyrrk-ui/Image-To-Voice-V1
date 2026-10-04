@@ -34,11 +34,18 @@ jobs:
       - name: Find Android project
         run: |
           echo "Searching for Android Gradle project..."
-          find extracted -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \)
+
+          find extracted -type f \( \
+            -name "settings.gradle.kts" -o \
+            -name "settings.gradle" \
+          \)
 
       - name: Set Android project directory
         run: |
-          PROJECT_DIR=$(dirname "$(find extracted -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \) | head -n 1)")
+          PROJECT_DIR=$(dirname "$(find extracted -type f \( \
+            -name "settings.gradle.kts" -o \
+            -name "settings.gradle" \
+          \) | head -n 1)")
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: Android Gradle project not found."
@@ -48,34 +55,40 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Android project found at: $PROJECT_DIR"
 
-      - name: Configure JVM targets
+      - name: Configure app JVM target
         run: |
           cd "$PROJECT_DIR"
 
-          cat >> build.gradle.kts <<'EOF'
+          echo "Original app/build.gradle.kts:"
+          cat app/build.gradle.kts
 
-          // CI JVM compatibility configuration
-          subprojects {
-              tasks.withType<JavaCompile>().configureEach {
-                  sourceCompatibility = "17"
-                  targetCompatibility = "17"
+          cat >> app/build.gradle.kts <<'EOF'
+
+          // CI JVM compatibility fix
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
               }
+          }
 
-              tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-                  kotlinOptions {
-                      jvmTarget = "17"
-                  }
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+              kotlinOptions {
+                  jvmTarget = "17"
               }
           }
           EOF
 
-          echo "JVM target configuration added."
+          echo "JVM 17 configuration added to app module."
+
+          echo "Updated app/build.gradle.kts:"
+          cat app/build.gradle.kts
 
       - name: Build Debug APK
         run: |
           cd "$PROJECT_DIR"
 
-          echo "Android project directory:"
+          echo "Project directory:"
           pwd
 
           echo "Java version:"
@@ -84,7 +97,7 @@ jobs:
           echo "Gradle version:"
           gradle --version
 
-          echo "Starting Gradle build..."
+          echo "Building APK..."
 
           gradle clean assembleDebug --stacktrace
 
