@@ -26,18 +26,26 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Extract Android project ZIP
+        run: |
+          mkdir -p extracted
+          unzip -o "ImageToVoiceV1_Project.zip" -d extracted
+
       - name: Find Android project
         run: |
-          echo "Searching for Gradle project..."
-          find . -name "settings.gradle" -o -name "settings.gradle.kts"
+          echo "Searching for settings.gradle.kts or settings.gradle..."
+          find extracted -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \)
 
       - name: Set Android project directory
         run: |
-          PROJECT_DIR=$(dirname "$(find . -name "settings.gradle.kts" -o -name "settings.gradle" | head -n 1)")
-          if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "." ]; then
-            PROJECT_DIR="."
+          PROJECT_DIR=$(dirname "$(find extracted -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \) | head -n 1)")
+          
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android Gradle project not found."
+            exit 1
           fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Android project found at: $PROJECT_DIR"
 
       - name: Build Debug APK
@@ -47,6 +55,7 @@ jobs:
 
       - name: Find APK
         run: |
+          echo "Searching for generated APK..."
           find "$PROJECT_DIR" -type f -name "*.apk"
 
       - name: Upload APK
