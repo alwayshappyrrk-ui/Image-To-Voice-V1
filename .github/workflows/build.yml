@@ -48,15 +48,35 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Android project found at: $PROJECT_DIR"
 
+      - name: Configure JVM targets
+        run: |
+          cd "$PROJECT_DIR"
+
+          cat >> build.gradle.kts <<'EOF'
+
+          // CI JVM compatibility configuration
+          subprojects {
+              tasks.withType<JavaCompile>().configureEach {
+                  sourceCompatibility = "17"
+                  targetCompatibility = "17"
+              }
+
+              tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+                  kotlinOptions {
+                      jvmTarget = "17"
+                  }
+              }
+          }
+          EOF
+
+          echo "JVM target configuration added."
+
       - name: Build Debug APK
         run: |
           cd "$PROJECT_DIR"
 
           echo "Android project directory:"
           pwd
-
-          echo "Gradle files:"
-          ls -la
 
           echo "Java version:"
           java -version
@@ -66,10 +86,7 @@ jobs:
 
           echo "Starting Gradle build..."
 
-          gradle assembleDebug \
-            -Dorg.gradle.java.home="$JAVA_HOME" \
-            -Dkotlin.jvm.target.validation.mode=warning \
-            --stacktrace
+          gradle clean assembleDebug --stacktrace
 
       - name: Find APK
         run: |
