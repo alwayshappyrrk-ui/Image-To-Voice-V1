@@ -39,18 +39,24 @@ jobs:
       - name: Set Android project directory
         run: |
           PROJECT_DIR=$(dirname "$(find extracted -type f \( -name "settings.gradle.kts" -o -name "settings.gradle" \) | head -n 1)")
-          
+
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: Android Gradle project not found."
             exit 1
           fi
-          
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Android project found at: $PROJECT_DIR"
 
-            - name: Build Debug APK
-               run: |
+      - name: Build Debug APK
+        run: |
           cd "$PROJECT_DIR"
+
+          echo "Android project directory:"
+          pwd
+
+          echo "Gradle files:"
+          ls -la
 
           cat > fix-jvm.gradle <<'EOF'
           afterEvaluate {
