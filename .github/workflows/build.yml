@@ -67,15 +67,62 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Make Gradle executable
-        working-directory: ${{ env.PROJECT_DIR }}
+            - name: Locate Android project
+        shell: bash
         run: |
-          chmod +x gradlew
+          set -e
+
+          PROJECT_DIR=$(find extracted -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -printf '%h\n' | head -n 1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android project not found."
+            find extracted -maxdepth 5 -type f
+            exit 1
+          fi
+
+          echo "Android project found at: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Project contents:"
+          ls -la "$PROJECT_DIR"
+
+      - name: Check Gradle wrapper
+        shell: bash
+        run: |
+          set -e
+
+          echo "Checking for Gradle wrapper..."
+
+          find "$PROJECT_DIR" -maxdepth 2 -type f \
+            \( -name "gradlew" -o -name "gradlew.bat" \) -print
+
+      - name: Make Gradle executable
+        shell: bash
+        run: |
+          set -e
+
+          if [ ! -f "$PROJECT_DIR/gradlew" ]; then
+            echo "gradlew not found in project."
+            echo "Using system Gradle instead."
+            exit 0
+          fi
+
+          chmod +x "$PROJECT_DIR/gradlew"
 
       - name: Build Debug APK
-        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
         run: |
-          ./gradlew clean assembleDebug --stacktrace
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            ./gradlew clean assembleDebug --stacktrace
+          else
+            gradle clean assembleDebug --stacktrace
+          fi
 
       - name: Find APK
         shell: bash
