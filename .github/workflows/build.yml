@@ -1,4 +1,4 @@
-name: Build ImageToVoiceV1 APK
+name: Build ImageToVoiceV2 APK
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build Android APK V2
     runs-on: ubuntu-latest
 
     steps:
@@ -21,94 +21,71 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Extract Android project ZIP
+      - name: Find and extract V2 ZIP
+        shell: bash
         run: |
-          mkdir -p extracted
-          unzip -o "ImageToVoiceV1_Project.zip" -d extracted
+          set -e
 
-      - name: Find Android project
-        run: |
-          echo "Searching for Android Gradle project..."
+          echo "Searching for ImageToVoice V2 ZIP..."
 
-          find extracted -type f \( \
-            -name "settings.gradle.kts" -o \
-            -name "settings.gradle" \
-          \)
+          ZIP_FILE=$(find . -maxdepth 2 -type f \
+            \( -iname "*ImageToVoiceV2*.zip" -o -iname "*V2*RJ*.zip" \) \
+            | head -n 1)
 
-      - name: Set Android project directory
-        run: |
-          PROJECT_DIR=$(dirname "$(find extracted -type f \( \
-            -name "settings.gradle.kts" -o \
-            -name "settings.gradle" \
-          \) | head -n 1)")
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android Gradle project not found."
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: ImageToVoice V2 ZIP not found."
+            echo "ZIP files found:"
+            find . -type f -name "*.zip"
             exit 1
           fi
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Android project found at: $PROJECT_DIR"
+          echo "Found ZIP: $ZIP_FILE"
 
-      - name: Configure app JVM target
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+
+          echo "Extracted files:"
+          find extracted -maxdepth 3 -type f | head -100
+
+      - name: Locate Android project
+        shell: bash
         run: |
-          cd "$PROJECT_DIR"
+          set -e
 
-          echo "Original app/build.gradle.kts:"
-          cat app/build.gradle.kts
+          PROJECT_DIR=$(find extracted -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -printf '%h\n' | head -n 1)
 
-          cat >> app/build.gradle.kts <<'EOF'
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android project not found."
+            find extracted -maxdepth 5 -type f
+            exit 1
+          fi
 
-          // CI JVM compatibility fix
-          android {
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-          }
+          echo "Android project found at:"
+          echo "$PROJECT_DIR"
 
-          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-              kotlinOptions {
-                  jvmTarget = "17"
-              }
-          }
-          EOF
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "JVM 17 configuration added to app module."
-
-          echo "Updated app/build.gradle.kts:"
-          cat app/build.gradle.kts
+      - name: Make Gradle executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          chmod +x gradlew
 
       - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          cd "$PROJECT_DIR"
-
-          echo "Project directory:"
-          pwd
-
-          echo "Java version:"
-          java -version
-
-          echo "Gradle version:"
-          gradle --version
-
-          echo "Building APK..."
-
-          gradle clean assembleDebug --stacktrace
+          ./gradlew clean assembleDebug --stacktrace
 
       - name: Find APK
+        shell: bash
         run: |
-          echo "Searching for generated APK..."
-          find "$PROJECT_DIR" -type f -name "*.apk"
+          echo "APK files:"
+          find "$PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ImageToVoiceV1-APK
-          path: '**/build/outputs/apk/debug/*.apk'
+          name: ImageToVoiceV2-Free-RJ-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
