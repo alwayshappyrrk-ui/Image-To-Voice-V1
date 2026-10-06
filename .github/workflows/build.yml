@@ -21,6 +21,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Find and extract V2 ZIP
         shell: bash
         run: |
@@ -28,9 +31,7 @@ jobs:
 
           echo "Searching for ImageToVoice V2 ZIP..."
 
-          ZIP_FILE=$(find . -maxdepth 2 -type f \
-            \( -iname "*ImageToVoiceV2*.zip" -o -iname "*V2*RJ*.zip" \) \
-            | head -n 1)
+          ZIP_FILE=$(find . -type f -iname "*ImageToVoiceV2*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
             echo "ERROR: ImageToVoice V2 ZIP not found."
@@ -39,13 +40,13 @@ jobs:
             exit 1
           fi
 
-          echo "Found ZIP: $ZIP_FILE"
+          echo "Found: $ZIP_FILE"
 
           mkdir -p extracted
           unzip -q "$ZIP_FILE" -d extracted
 
-          echo "Extracted files:"
-          find extracted -maxdepth 3 -type f | head -100
+          echo "Extracted structure:"
+          find extracted -maxdepth 4 -type f | sort
 
       - name: Locate Android project
         shell: bash
@@ -57,59 +58,32 @@ jobs:
             -printf '%h\n' | head -n 1)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android project not found."
-            find extracted -maxdepth 5 -type f
+            echo "ERROR: settings.gradle not found."
             exit 1
           fi
 
-          echo "Android project found at:"
+          echo "Android project:"
           echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-            - name: Locate Android project
-        shell: bash
-        run: |
-          set -e
-
-          PROJECT_DIR=$(find extracted -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -printf '%h\n' | head -n 1)
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android project not found."
-            find extracted -maxdepth 5 -type f
-            exit 1
-          fi
-
-          echo "Android project found at: $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          echo "Project contents:"
+          echo "Project files:"
           ls -la "$PROJECT_DIR"
 
-      - name: Check Gradle wrapper
+      - name: Check Android project
         shell: bash
         run: |
           set -e
 
-          echo "Checking for Gradle wrapper..."
+          test -f "$PROJECT_DIR/settings.gradle" \
+            || test -f "$PROJECT_DIR/settings.gradle.kts"
 
-          find "$PROJECT_DIR" -maxdepth 2 -type f \
-            \( -name "gradlew" -o -name "gradlew.bat" \) -print
+          test -f "$PROJECT_DIR/build.gradle" \
+            || test -f "$PROJECT_DIR/build.gradle.kts"
 
-      - name: Make Gradle executable
-        shell: bash
-        run: |
-          set -e
+          test -d "$PROJECT_DIR/app"
 
-          if [ ! -f "$PROJECT_DIR/gradlew" ]; then
-            echo "gradlew not found in project."
-            echo "Using system Gradle instead."
-            exit 0
-          fi
-
-          chmod +x "$PROJECT_DIR/gradlew"
+          echo "Android project structure OK."
 
       - name: Build Debug APK
         shell: bash
@@ -118,16 +92,19 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          if [ -f "./gradlew" ]; then
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
             ./gradlew clean assembleDebug --stacktrace
           else
+            echo "gradlew not found."
+            echo "Using installed Gradle..."
             gradle clean assembleDebug --stacktrace
           fi
 
       - name: Find APK
         shell: bash
         run: |
-          echo "APK files:"
+          echo "Generated APK files:"
           find "$PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
