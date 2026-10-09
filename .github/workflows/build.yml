@@ -29,33 +29,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Searching for V2 ZIP..."
+          ZIP_FILE="./ImageToVoiceV2_Free_RJ_JVM17_FIXED.zip"
 
-          mapfile -t ZIP_FILES < <(
-            find . -type f -iname '*ImageToVoiceV2*.zip' \
-              ! -path './.git/*' | sort
-          )
-
-          if [ "${#ZIP_FILES[@]}" -eq 0 ]; then
-            echo "ERROR: No ImageToVoiceV2 ZIP found."
-            find . -type f -iname '*.zip'
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: Required V2 ZIP not found: $ZIP_FILE"
+            echo "Available ZIP files:"
+            find . -type f -iname '*.zip' ! -path './.git/*'
             exit 1
           fi
 
-          if [ "${#ZIP_FILES[@]}" -gt 1 ]; then
-            echo "ERROR: Multiple V2 ZIP files found:"
-            printf '%s\n' "${ZIP_FILES[@]}"
-            echo "Keep only the intended V2 ZIP in the repository."
-            exit 1
-          fi
-
-          ZIP_FILE="${ZIP_FILES[0]}"
-          echo "Selected ZIP: $ZIP_FILE"
+          echo "Selected final V2 ZIP: $ZIP_FILE"
 
           mkdir -p extracted
           unzip -q "$ZIP_FILE" -d extracted
 
-          echo "Gradle files found:"
+          echo "Searching for Android project files..."
           find extracted -type f \
             \( -name 'settings.gradle' \
             -o -name 'settings.gradle.kts' \
@@ -75,7 +63,7 @@ jobs:
           )
 
           if [ "${#PROJECTS[@]}" -eq 0 ]; then
-            echo "ERROR: No Android settings.gradle file found."
+            echo "ERROR: No settings.gradle file found."
             exit 1
           fi
 
@@ -88,7 +76,7 @@ jobs:
           PROJECT_DIR="${PROJECTS[0]}"
 
           if [ ! -d "$PROJECT_DIR/app" ]; then
-            echo "ERROR: app directory missing."
+            echo "ERROR: Android app directory missing."
             exit 1
           fi
 
@@ -106,13 +94,8 @@ jobs:
 
           if [ ! -f "$FILE" ]; then
             echo "ERROR: $FILE not found."
-            find "$PROJECT_DIR/app" -maxdepth 2 \
-              -type f -name 'build.gradle*' -print
             exit 1
           fi
-
-          echo "Original app Gradle file:"
-          cat "$FILE"
 
           python3 - "$FILE" <<'PY'
           import pathlib
@@ -122,31 +105,23 @@ jobs:
           path = pathlib.Path(sys.argv[1])
           text = path.read_text()
 
-          # Fix explicit Java 1.8 compatibility settings.
           text = text.replace(
               'JavaVersion.VERSION_1_8',
               'JavaVersion.VERSION_17'
           )
 
-          # Fix explicit Kotlin JVM targets.
           text = re.sub(
               r'(jvmTarget\s*=\s*["\'])1\.8(["\'])',
               r'\g<1>17\2',
               text
           )
 
-          # Ensure Android Java compatibility is explicitly set to 17.
           android_match = re.search(r'\bandroid\s*\{', text)
 
           if not android_match:
-              raise SystemExit(
-                  'ERROR: android { } block not found.'
-              )
+              raise SystemExit('ERROR: android block not found.')
 
-          options_match = re.search(
-              r'\bcompileOptions\s*\{',
-              text
-          )
+          options_match = re.search(r'\bcompileOptions\s*\{', text)
 
           if options_match:
               start = options_match.end()
@@ -161,77 +136,47 @@ jobs:
                   i += 1
 
               if depth != 0:
-                  raise SystemExit(
-                      'ERROR: Could not parse compileOptions block.'
-                  )
+                  raise SystemExit('ERROR: Invalid compileOptions block.')
 
               body = text[start:i-1]
 
-              if re.search(r'\bsourceCompatibility\s*=', body):
-                  body = re.sub(
-                      r'sourceCompatibility\s*=\s*JavaVersion\.\w+',
-                      'sourceCompatibility = JavaVersion.VERSION_17',
-                      body
-                  )
-              else:
-                  body += (
-                      '\n        sourceCompatibility = '
-                      'JavaVersion.VERSION_17\n'
-                  )
+              for key in ('sourceCompatibility', 'targetCompatibility'):
+                  pattern = rf'\b{key}\s*=\s*JavaVersion\.\w+'
+                  replacement = f'{key} = JavaVersion.VERSION_17'
 
-              if re.search(r'\btargetCompatibility\s*=', body):
-                  body = re.sub(
-                      r'targetCompatibility\s*=\s*JavaVersion\.\w+',
-                      'targetCompatibility = JavaVersion.VERSION_17',
-                      body
-                  )
-              else:
-                  body += (
-                      '\n        targetCompatibility = '
-                      'JavaVersion.VERSION_17\n'
-                  )
+                  if re.search(pattern, body):
+                      body = re.sub(pattern, replacement, body)
+                  else:
+                      body += f'\n        {replacement}\n'
 
               text = text[:start] + body + text[i-1:]
 
           else:
               insert_at = android_match.end()
-
-              text = (
-                  text[:insert_at]
-                  + '\n    compileOptions {\n'
-                    '        sourceCompatibility = '
-                    'JavaVersion.VERSION_17\n'
-                    '        targetCompatibility = '
-                    'JavaVersion.VERSION_17\n'
-                    '    }\n'
-                  + text[insert_at:]
-              )
+              block = """
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          """
+              text = text[:insert_at] + block + text[insert_at:]
 
           path.write_text(text)
-
-          print('\nUpdated app/build.gradle.kts:')
-          print(text)
+          print('Java compatibility configured for JVM 17.')
           PY
-
-          echo "Checking remaining JVM 1.8 settings:"
-          grep -RInE \
-            'VERSION_1_8|jvmTarget.*1\.8|sourceCompatibility.*1\.8|targetCompatibility.*1\.8' \
-            "$PROJECT_DIR" \
-            --include='*.gradle' \
-            --include='*.gradle.kts' || true
 
       - name: Check Android project
         shell: bash
         run: |
           set -euo pipefail
 
-          test -f "$PROJECT_DIR/settings.gradle" \
-            || test -f "$PROJECT_DIR/settings.gradle.kts"
-
-          test -f "$PROJECT_DIR/build.gradle" \
-            || test -f "$PROJECT_DIR/build.gradle.kts"
-
           test -d "$PROJECT_DIR/app"
+
+          if [ ! -f "$PROJECT_DIR/build.gradle.kts" ] \
+             && [ ! -f "$PROJECT_DIR/build.gradle" ]; then
+            echo "ERROR: Root Gradle build file missing."
+            exit 1
+          fi
 
           echo "Android project structure OK."
 
@@ -257,7 +202,11 @@ jobs:
 
           APK_DIR="$PROJECT_DIR/app/build/outputs/apk/debug"
 
-          echo "Generated APK files:"
+          if [ ! -d "$APK_DIR" ]; then
+            echo "ERROR: APK output directory not found."
+            exit 1
+          fi
+
           find "$APK_DIR" -type f -name '*.apk' -print
 
           if ! find "$APK_DIR" -type f -name '*.apk' \
