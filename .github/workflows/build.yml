@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP_FILE="./ImageToVoiceV2_Free_RJ_JVM17_FIXED.zip"
+          ZIP_FILE="./ImageToVoiceV2_Free_RJ_JVM17_FIXED_CONTEXT_FIX.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: Required V2 ZIP not found: $ZIP_FILE"
